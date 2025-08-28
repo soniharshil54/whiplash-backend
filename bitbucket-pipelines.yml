@@ -24,25 +24,29 @@ pipelines:
             - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
             - IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}:${VERSION}"
 
-            # create repo if missing (robust block)
+            # ensure ECR repo
             - |
               if ! aws ecr describe-repositories --repository-names "${REPO_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
                 echo "Creating ECR repository: ${REPO_NAME}"
                 aws ecr create-repository --repository-name "${REPO_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 || true
               fi
 
-            # ECR login (one line, NO backslash)
+            # ECR login
             - aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-            # Build & push with compose
+            # 🔧 disable BuildKit (Bitbucket disallows privileged buildkit container)
+            - export DOCKER_BUILDKIT=0
+            - export COMPOSE_DOCKER_CLI_BUILD=0
+
+            # Build & push with compose (legacy builder)
             - export IMAGE_URI
             - docker compose -f docker-compose.build.yml build
             - docker push "${IMAGE_URI}"
 
-            # hand off version to deploy step
             - echo "${VERSION}" > .version
           artifacts:
             - .version
+
 
       - step:
           name: Deploy (update BackendImageTag)
