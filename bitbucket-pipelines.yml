@@ -10,33 +10,36 @@ pipelines:
           services: [docker]
           script:
             - apk add --no-cache aws-cli jq bash
+            - set -euo pipefail
+
             # require envs
             - '[ -n "${AWS_REGION}" ] || { echo "AWS_REGION is required"; exit 1; }'
             - '[ -n "${PROJECT}" ]    || { echo "PROJECT is required"; exit 1; }'
             - '[ -n "${STAGE}" ]      || { echo "STAGE is required"; exit 1; }'
-            # build & push
+
+            # computed values
             - export DOCKER_DEFAULT_PLATFORM=linux/amd64
             - REPO_NAME="${PROJECT}-${STAGE}-backend"
             - VERSION=$(cat VERSION)
             - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
             - IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}:${VERSION}"
 
-            # ✅ robust: create repo only if it doesn't exist
+            # create repo if missing (robust block)
             - |
               if ! aws ecr describe-repositories --repository-names "${REPO_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
                 echo "Creating ECR repository: ${REPO_NAME}"
-                # ignore 'already exists' if a concurrent job just created it
                 aws ecr create-repository --repository-name "${REPO_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 || true
               fi
 
-            # login & compose build → push
-            - aws ecr get-login-password --region "${AWS_REGION}" \
-                | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+            # ECR login (one line, NO backslash)
+            - aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
+            # Build & push with compose
             - export IMAGE_URI
             - docker compose -f docker-compose.build.yml build
             - docker push "${IMAGE_URI}"
 
+            # hand off version to deploy step
             - echo "${VERSION}" > .version
           artifacts:
             - .version
@@ -45,6 +48,7 @@ pipelines:
           name: Deploy (update BackendImageTag)
           script:
             - apk add --no-cache aws-cli jq bash
+            - set -euo pipefail
 
             # require envs
             - '[ -n "${AWS_REGION}" ] || { echo "AWS_REGION is required"; exit 1; }'
@@ -54,17 +58,13 @@ pipelines:
             - STACK_NAME="${PROJECT}-${STAGE}"
             - VERSION=$(cat .version)
 
-            # stack must already exist (Option A)
-            - STATUS=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" \
-                --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
+            # require existing stack (Option A)
             - |
+              STATUS=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
               if [[ -z "$STATUS" || "$STATUS" == "STACK_NOT_FOUND" ]]; then
                 echo "❌ Stack ${STACK_NAME} not found. Create it once from infra (cdk deploy)."
                 exit 1
               fi
-
-            # wait if an operation is in progress
-            - |
               if [[ "$STATUS" == "CREATE_IN_PROGRESS" ]]; then
                 aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}"
               elif [[ "$STATUS" == "UPDATE_IN_PROGRESS" || "$STATUS" == "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" ]]; then
@@ -72,20 +72,21 @@ pipelines:
               fi
 
             # param-only update: flip BackendImageTag, preserve FrontendImageTag
-            - aws cloudformation update-stack \
+            - |
+              set +e
+              aws cloudformation update-stack \
                 --stack-name "${STACK_NAME}" \
                 --use-previous-template \
                 --capabilities CAPABILITY_NAMED_IAM CAPABILITY_IAM \
                 --parameters \
                   ParameterKey=BackendImageTag,ParameterValue="${VERSION}" \
                   ParameterKey=FrontendImageTag,UsePreviousValue=true \
-                --region "${AWS_REGION}" || rc=$?
-
-            - |
-              if [[ "${rc:-0}" -eq 254 ]]; then
+                --region "${AWS_REGION}"
+              rc=$?
+              set -e
+              if [[ $rc -eq 254 ]]; then
                 echo "ℹ️ No updates to perform."
-              elif [[ "${rc:-0}" -ne 0 ]]; then
-                exit ${rc}
+              elif [[ $rc -ne 0 ]]; then
+                exit $rc
               fi
-
-            - aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}"
+              aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}"
