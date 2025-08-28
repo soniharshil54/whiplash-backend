@@ -1,4 +1,4 @@
-image: atlassian/default-image:4
+image: docker:24.0.7-cli-alpine
 options:
   docker: true
 
@@ -9,31 +9,35 @@ pipelines:
           name: Build & Push (backend)
           services: [docker]
           script:
+            # tooling
+            - apk add --no-cache aws-cli jq bash
+
             # ---- hard require envs (no defaults) ----
             - '[ -n "${AWS_REGION}" ] || { echo "AWS_REGION is required"; exit 1; }'
             - '[ -n "${PROJECT}" ]    || { echo "PROJECT is required"; exit 1; }'
             - '[ -n "${STAGE}" ]      || { echo "STAGE is required"; exit 1; }'
 
+            # build/push config
             - export DOCKER_DEFAULT_PLATFORM=linux/amd64
             - REPO_NAME="${PROJECT}-${STAGE}-backend"
             - VERSION=$(cat VERSION)
             - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
             - IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}:${VERSION}"
 
-            # Ensure ECR repo exists
+            # ensure ECR repo
             - aws ecr describe-repositories --repository-names "${REPO_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 \
               || aws ecr create-repository --repository-name "${REPO_NAME}" --region "${AWS_REGION}"
 
-            # Login & Build+Push via docker compose
+            # ECR login
             - aws ecr get-login-password --region "${AWS_REGION}" \
               | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-            # Compose build with the target ECR tag
+            # Compose build with target ECR tag, then push
             - export IMAGE_URI
             - docker compose -f docker-compose.build.yml build
             - docker push "${IMAGE_URI}"
 
-            # Hand off VERSION to deploy step
+            # pass version to deploy step
             - echo "${VERSION}" > .version
           artifacts:
             - .version
@@ -41,6 +45,9 @@ pipelines:
       - step:
           name: Deploy (update BackendImageTag)
           script:
+            # tooling
+            - apk add --no-cache aws-cli jq bash
+
             # ---- hard require envs (no defaults) ----
             - '[ -n "${AWS_REGION}" ] || { echo "AWS_REGION is required"; exit 1; }'
             - '[ -n "${PROJECT}" ]    || { echo "PROJECT is required"; exit 1; }'
@@ -49,23 +56,24 @@ pipelines:
             - STACK_NAME="${PROJECT}-${STAGE}"
             - VERSION=$(cat .version)
 
-            # Stack must already exist (Option A assumption)
+            # require stack to already exist (Option A)
             - STATUS=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" \
                 --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
             - |
               if [[ -z "$STATUS" || "$STATUS" == "STACK_NOT_FOUND" ]]; then
-                echo "❌ Stack ${STACK_NAME} not found. Create it once from infra (cdk deploy)."; exit 1;
+                echo "❌ Stack ${STACK_NAME} not found. Create it once from infra (cdk deploy)."
+                exit 1
               fi
 
-            # Serialize if an operation is already in progress
+            # if an operation is already in progress, wait
             - |
               if [[ "$STATUS" == CREATE_IN_PROGRESS ]]; then
-                aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}";
-              elif [[ "$STATUS" == UPDATE_IN_PROGRESS || "$STATUS" == UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" ]]; then
-                aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}";
+                aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}"
+              elif [[ "$STATUS" == UPDATE_IN_PROGRESS" || "$STATUS" == "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" ]]; then
+                aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}"
               fi
 
-            # Param-only update: flip BackendImageTag, preserve FrontendImageTag
+            # param-only update: flip BackendImageTag, preserve FrontendImageTag
             - aws cloudformation update-stack \
                 --stack-name "${STACK_NAME}" \
                 --use-previous-template \
@@ -77,9 +85,9 @@ pipelines:
 
             - |
               if [[ "${rc:-0}" -eq 254 ]]; then
-                echo "ℹ️ No updates to perform.";
+                echo "ℹ️ No updates to perform."
               elif [[ "${rc:-0}" -ne 0 ]]; then
-                exit ${rc};
+                exit ${rc}
               fi
 
             - aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}"
