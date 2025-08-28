@@ -10,7 +10,7 @@ app.get("/api/hello", (req: Request, res: Response) => {
 
 app.get("/api/healthcheck", (req: Request, res: Response) => {
   console.log("healthcheck api called");
-  res.json({ message: "Healthcheck passed" });
+  res.json({ message: "Healthcheck passed", version: '1.0.5' });
 });
 
 app.listen(port, () => {

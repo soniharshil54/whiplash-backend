@@ -5,7 +5,7 @@ set -euo pipefail
 : "${AWS_REGION:=us-east-1}"
 : "${STAGE:=dev}"
 PROJECT="whiplash"
-REPO_NAME="${PROJECT}-backend"
+REPO_NAME="${PROJECT}-${STAGE}-backend"
 STACK_NAME="${PROJECT}-${STAGE}"
 INFRA_DIR="../whiplash-infra"
 
