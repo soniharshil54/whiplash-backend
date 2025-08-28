@@ -1,4 +1,4 @@
-image: docker:24.0.7-cli-alpine
+image: docker:24.0.6-cli
 options:
   docker: true
 
@@ -9,15 +9,15 @@ pipelines:
           name: Build & Push (backend)
           services: [docker]
           script:
-            # tooling
+            # tools
             - apk add --no-cache aws-cli jq bash
 
-            # ---- hard require envs (no defaults) ----
+            # require envs
             - '[ -n "${AWS_REGION}" ] || { echo "AWS_REGION is required"; exit 1; }'
             - '[ -n "${PROJECT}" ]    || { echo "PROJECT is required"; exit 1; }'
             - '[ -n "${STAGE}" ]      || { echo "STAGE is required"; exit 1; }'
 
-            # build/push config
+            # build & push
             - export DOCKER_DEFAULT_PLATFORM=linux/amd64
             - REPO_NAME="${PROJECT}-${STAGE}-backend"
             - VERSION=$(cat VERSION)
@@ -28,16 +28,15 @@ pipelines:
             - aws ecr describe-repositories --repository-names "${REPO_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 \
               || aws ecr create-repository --repository-name "${REPO_NAME}" --region "${AWS_REGION}"
 
-            # ECR login
+            # login & compose build → push
             - aws ecr get-login-password --region "${AWS_REGION}" \
               | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-            # Compose build with target ECR tag, then push
             - export IMAGE_URI
             - docker compose -f docker-compose.build.yml build
             - docker push "${IMAGE_URI}"
 
-            # pass version to deploy step
+            # hand off version to deploy step
             - echo "${VERSION}" > .version
           artifacts:
             - .version
@@ -45,10 +44,9 @@ pipelines:
       - step:
           name: Deploy (update BackendImageTag)
           script:
-            # tooling
             - apk add --no-cache aws-cli jq bash
 
-            # ---- hard require envs (no defaults) ----
+            # require envs
             - '[ -n "${AWS_REGION}" ] || { echo "AWS_REGION is required"; exit 1; }'
             - '[ -n "${PROJECT}" ]    || { echo "PROJECT is required"; exit 1; }'
             - '[ -n "${STAGE}" ]      || { echo "STAGE is required"; exit 1; }'
@@ -56,7 +54,7 @@ pipelines:
             - STACK_NAME="${PROJECT}-${STAGE}"
             - VERSION=$(cat .version)
 
-            # require stack to already exist (Option A)
+            # stack must already exist (Option A)
             - STATUS=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" \
                 --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
             - |
@@ -65,11 +63,11 @@ pipelines:
                 exit 1
               fi
 
-            # if an operation is already in progress, wait
+            # wait if an operation is in progress
             - |
-              if [[ "$STATUS" == CREATE_IN_PROGRESS ]]; then
+              if [[ "$STATUS" == "CREATE_IN_PROGRESS" ]]; then
                 aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}"
-              elif [[ "$STATUS" == UPDATE_IN_PROGRESS" || "$STATUS" == "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" ]]; then
+              elif [[ "$STATUS" == "UPDATE_IN_PROGRESS" || "$STATUS" == "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" ]]; then
                 aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}"
               fi
 
