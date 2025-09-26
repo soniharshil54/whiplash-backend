@@ -19,18 +19,19 @@ echo "📦 Image URI: ${IMAGE_URI}"
 echo "📂 Infra stack: ${STACK_NAME}"
 
 # ──────────────── DOCKER BUILD & PUSH ────────────────
-# aws ecr get-login-password --region "${AWS_REGION}" \
-#   | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+aws ecr get-login-password --region "${AWS_REGION}" \
+  | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-# export IMAGE_URI
-# docker compose -f docker-compose.build.yml build
-# docker push "${IMAGE_URI}"
+export IMAGE_URI
+docker compose -f docker-compose.build.yml build
+docker push "${IMAGE_URI}"
 
 # ──────────────── CDK DEPLOY (update stack with new image tag) ────────────────
 echo "🚀 Updating CloudFormation stack ${STACK_NAME} with BackendImageTag=${VERSION}"
 
 cd "${INFRA_DIR}"
 
+cdk context --clear
 cdk deploy \
   --require-approval never \
   --context stage="${STAGE}" \
