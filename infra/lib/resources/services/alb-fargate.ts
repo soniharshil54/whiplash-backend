@@ -6,7 +6,8 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 
 export interface AlbFargateOptions {
-  cluster: ecs.Cluster;
+  // CHANGE: accept ICluster (works for imported clusters)
+  cluster: ecs.ICluster;
   cpu: number;
   memoryLimitMiB: number;
   desiredCount: number;
@@ -15,7 +16,14 @@ export interface AlbFargateOptions {
   containerPort: number;
   serviceName: string;
   repositoryName: string; // ECR repo to grant pull
-  healthCheck: { path: string; healthyHttpCodes: string };
+  healthCheck: { 
+    port: string;
+    path: string;
+    healthyThreshold: number;
+    unhealthyThreshold: number;
+    interval: number;
+    timeout: number;
+  };
   publicLoadBalancer?: boolean;
   healthCheckGraceSec?: number;
 }
@@ -26,7 +34,7 @@ export function createAlbFargateService(
   opts: AlbFargateOptions
 ): ecsPatterns.ApplicationLoadBalancedFargateService {
   const svc = new ecsPatterns.ApplicationLoadBalancedFargateService(scope, id, {
-    cluster: opts.cluster,
+    cluster: opts.cluster, // ecs.ICluster is what the pattern expects
     cpu: opts.cpu,
     memoryLimitMiB: opts.memoryLimitMiB,
     publicLoadBalancer: opts.publicLoadBalancer ?? true,
@@ -41,17 +49,18 @@ export function createAlbFargateService(
     healthCheckGracePeriod: cdk.Duration.seconds(opts.healthCheckGraceSec ?? 30),
   });
 
-  // Tight health checks
+  // Health checks
   svc.targetGroup.configureHealthCheck({
+    port: opts.healthCheck.port,
     path: opts.healthCheck.path,
-    healthyHttpCodes: opts.healthCheck.healthyHttpCodes,
-    interval: cdk.Duration.seconds(10),
-    timeout: cdk.Duration.seconds(5),
-    healthyThresholdCount: 2,
-    unhealthyThresholdCount: 2,
+    healthyHttpCodes: '200-399',
+    interval: cdk.Duration.seconds(opts.healthCheck.interval),
+    timeout: cdk.Duration.seconds(opts.healthCheck.timeout),
+    healthyThresholdCount: opts.healthCheck.healthyThreshold,
+    unhealthyThresholdCount: opts.healthCheck.unhealthyThreshold,
   });
 
-  // Allow task to pull from ECR
+  // Execution role → ECR pull
   svc.taskDefinition.executionRole!.addManagedPolicy(
     iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy')
   );
