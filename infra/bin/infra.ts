@@ -19,5 +19,7 @@ new InfraStack(app, stage, {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
   stage,
   projectName,
+  baseProjectName: 'whiplash',
+  imageTag: app.node.tryGetContext('version'),
   config,
 });

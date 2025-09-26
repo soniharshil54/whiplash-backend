@@ -14,51 +14,44 @@ interface InfraStackProps extends cdk.StackProps {
   stage: string;
   projectName: string;
   config: Config;
-  imageTag?: string; // pass via -c imageTag=... or props
+  imageTag: string;
+  baseProjectName: string;
 }
 
 export class InfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: InfraStackProps) {
     super(scope, id, props);
 
-    const { stage, projectName, config } = props;
+    const { stage, projectName, config, baseProjectName } = props;
     const name    = nameResource(projectName, stage);
     const account = cdk.Stack.of(this).account;
     const region  = cdk.Stack.of(this).region;
 
-    const imageTag = props.imageTag ?? this.node.tryGetContext('imageTag') ?? 'latest';
+    const imageTag = props.imageTag;
     const desired  = config.deploymentConfig.service.desiredCount;
 
-    cdk.Tags.of(this).add('Project', projectName);
-    cdk.Tags.of(this).add('Stage', stage);
+    // ─────────────────────────────────────────────────────────────────────────────
+    // SSM reads
+    // MUST be concrete at synth for fromLookup:
+    const vpcId = ssm.StringParameter.valueFromLookup(this, `/${baseProjectName}/${stage}/vpcId`);
+
+    // These can be tokens (resolved at deploy)
+    const clusterName = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/clusterName`);
+    const repoName    = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/ecrBackendRepoName`);
+    const bucketName  = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/s3BucketName`);
+
+    // Optional: if you also exported public/private subnet ids and want to force placement,
+    // you can read them here too (valueForStringParameter is fine).
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Read common-infra exports from SSM
-    const vpcId   = ssm.StringParameter.valueForStringParameter(this, `/${projectName}/${stage}/vpcId`);
-    const privIds = ssm.StringParameter.valueForStringParameter(this, `/${projectName}/${stage}/privateSubnetIds`).split(',');
-    const privRt  = ssm.StringParameter.valueForStringParameter(this, `/${projectName}/${stage}/privateSubnetRouteTableIds`).split(',');
-    const clusterName = ssm.StringParameter.valueForStringParameter(this, `/${projectName}/${stage}/clusterName`);
-    const repoName    = ssm.StringParameter.valueForStringParameter(this, `/${projectName}/${stage}/ecrBackendRepoName`);
-    const bucketName  = ssm.StringParameter.valueForStringParameter(this, `/${projectName}/${stage}/s3BucketName`);
+    // Import VPC via lookup (now allowed because vpcId is a real string)
+    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId });
 
-    console.log('─────────────────────────────────────────────────────────────────────────────');
-    console.log(`Account: ${account}`);
-    console.log(`Region:  ${region}`);
-    console.log(`VPC:     ${vpcId}`);
-    console.log(`Cluster: ${clusterName}`);
-    console.log(`ECR:     ${repoName}`);
-    console.log(`S3:      ${bucketName}`);
-    console.log(`Image:   ${account}.dkr.ecr.${region}.amazonaws.com/${repoName}:${imageTag}`);
-    console.log(`privIds: ${privIds}`);
-    console.log(`privRt:  ${privRt}`);
-    console.log('─────────────────────────────────────────────────────────────────────────────');
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Import VPC & ECS Cluster
-    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId });   // CDK queries AWS
+    // Import Cluster (needs the VPC object; SSM token for name is fine)
     const cluster = ecs.Cluster.fromClusterAttributes(this, 'Cluster', {
       clusterName,
       vpc,
-      securityGroups: [],
+      securityGroups: [], // supply if you exported one
     });
 
     // ECR repo and image
@@ -69,7 +62,7 @@ export class InfraStack extends cdk.Stack {
     const bucket = s3.Bucket.fromBucketName(this, 'AppBucket', bucketName);
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Service (pattern creates its own ALB)
+    // Service (pattern creates a **public ALB** in the VPC’s public subnets)
     const svc = createAlbFargateService(this, name('BackendService'), {
       cluster,
       cpu: config.deploymentConfig.container.cpu,
@@ -79,16 +72,13 @@ export class InfraStack extends cdk.Stack {
       containerName: name('backend-container'),
       containerPort: config.deploymentConfig.targetGroup.port,
       serviceName: name('backend-service'),
-      repositoryName: repoName, // so helper can grant ECR pull on executionRole
+      repositoryName: repoName,
       healthCheck: config.deploymentConfig.targetGroup.healthCheck,
-      publicLoadBalancer: true,
+      publicLoadBalancer: true, // ALB in public subnets
     });
 
-    // Grant S3 read/write to TASK ROLE (app code)
+    // App permissions: S3 RW on task role
     bucket.grantReadWrite(svc.taskDefinition.taskRole);
-
-    // If you want env vars:
-    // svc.taskDefinition.defaultContainer?.addEnvironment('S3_BUCKET', bucketName);
 
     new cdk.CfnOutput(this, name('BackendURL'), {
       value: `http://${svc.loadBalancer.loadBalancerDnsName}`,

@@ -34,7 +34,7 @@ cd "${INFRA_DIR}"
 cdk deploy \
   --require-approval never \
   --context stage="${STAGE}" \
-  --parameters version="${VERSION}"
+  --context version="${VERSION}"
 
 cd - >/dev/null
 
