@@ -3,10 +3,9 @@ import { devConfig } from './dev';
 import { stagingConfig } from './staging';
 import { prodConfig } from './prod';
 import { Config } from './types/config';
+import { StackName } from './types/stackName';
 
 // Environment configuration mapping
-type StackName = 'dev' | 'staging' | 'prod';
-
 const configs: Record<StackName, Config> = {
   dev: devConfig,
   staging: stagingConfig,

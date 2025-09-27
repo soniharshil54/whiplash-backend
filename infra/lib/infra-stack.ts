@@ -7,7 +7,7 @@ import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Config } from '../lib/config/types/config';
 
-import { nameResource } from './common';
+import { nameResource, getEnvVars } from './common';
 import { createAlbFargateService } from './resources/services/alb-fargate';
 
 interface InfraStackProps extends cdk.StackProps {
@@ -61,6 +61,8 @@ export class InfraStack extends cdk.Stack {
     // S3 bucket (shared from common-infra)
     const bucket = s3.Bucket.fromBucketName(this, 'AppBucket', bucketName);
 
+    console.log('process.env ---', getEnvVars());
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Service (pattern creates a **public ALB** in the VPC’s public subnets)
     const svc = createAlbFargateService(this, name('BackendService'), {
@@ -75,6 +77,7 @@ export class InfraStack extends cdk.Stack {
       repositoryName: repoName,
       healthCheck: config.deploymentConfig.targetGroup.healthCheck,
       publicLoadBalancer: true, // ALB in public subnets
+      environment: getEnvVars(),
     });
 
     // App permissions: S3 RW on task role

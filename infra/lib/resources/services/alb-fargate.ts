@@ -26,6 +26,7 @@ export interface AlbFargateOptions {
   };
   publicLoadBalancer?: boolean;
   healthCheckGraceSec?: number;
+  environment?: { [key: string]: string };
 }
 
 export function createAlbFargateService(
@@ -43,6 +44,7 @@ export function createAlbFargateService(
       image: opts.image,
       containerName: opts.containerName,
       containerPort: opts.containerPort,
+      environment: { ...opts.environment },
     },
     serviceName: opts.serviceName,
     circuitBreaker: { rollback: true },
