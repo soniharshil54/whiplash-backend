@@ -28,7 +28,7 @@ definitions:
 
           # image + repo
           - export DOCKER_DEFAULT_PLATFORM=linux/amd64
-          - REPO_NAME="${PROJECT}-${DEPLOY_ENV}-frontend"
+          - REPO_NAME="${PROJECT}-${DEPLOY_ENV}-backend"
           - VERSION=$(cat VERSION)
           - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           - IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}:${VERSION}"
