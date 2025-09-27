@@ -4,6 +4,8 @@ import { InfraStack } from '../lib/infra-stack';
 import { getConfigForStack } from '../lib/config';
 import { getRequiredEnvVar } from '../lib/common';
 
+console.log('process.env --- infra.ts', process.env);
+
 const baseProjectName = getRequiredEnvVar('PROJECT')
 const projectName = `${baseProjectName}-backend`;
 // const version = getRequiredEnvVar('VERSION');
@@ -13,7 +15,6 @@ if (!['dev', 'staging', 'prod'].includes(deployEnv)) {
   throw new Error('DEPLOY_ENV must be one of: dev, staging, prod');
 }
 
-console.log('process.env --- infra.ts', process.env);
 const app = new cdk.App();
 
 console.log('process.env.PROJECT', process.env.PROJECT);
