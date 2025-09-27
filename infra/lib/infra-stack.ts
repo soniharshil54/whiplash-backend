@@ -16,13 +16,15 @@ interface InfraStackProps extends cdk.StackProps {
   config: Config;
   imageTag: string;
   baseProjectName: string;
+  appType: 'Backend' | 'Frontend';
 }
 
 export class InfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: InfraStackProps) {
     super(scope, id, props);
 
-    const { stage, projectName, config, baseProjectName } = props;
+    const { stage, projectName, config, baseProjectName, appType } = props;
+    const appTypeLower = appType.toLowerCase();
     const name    = nameResource(projectName, stage);
     const account = cdk.Stack.of(this).account;
     const region  = cdk.Stack.of(this).region;
@@ -37,7 +39,7 @@ export class InfraStack extends cdk.Stack {
 
     // These can be tokens (resolved at deploy)
     const clusterName = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/clusterName`);
-    const repoName    = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/ecrBackendRepoName`);
+    const repoName    = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/ecr${appType}RepoName`);
     const bucketName  = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/s3BucketName`);
 
     // Optional: if you also exported public/private subnet ids and want to force placement,
@@ -55,7 +57,7 @@ export class InfraStack extends cdk.Stack {
     });
 
     // ECR repo and image
-    const repo  = ecr.Repository.fromRepositoryName(this, 'BackendRepo', repoName);
+    const repo  = ecr.Repository.fromRepositoryName(this, `${appType}Repo`, repoName);
     const image = ecs.ContainerImage.fromEcrRepository(repo, imageTag);
 
     // S3 bucket (shared from common-infra)
@@ -65,15 +67,15 @@ export class InfraStack extends cdk.Stack {
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Service (pattern creates a **public ALB** in the VPC’s public subnets)
-    const svc = createAlbFargateService(this, name('BackendService'), {
+    const svc = createAlbFargateService(this, name(`${appType}Service`), {
       cluster,
       cpu: config.deploymentConfig.container.cpu,
       memoryLimitMiB: config.deploymentConfig.container.memory,
       desiredCount: desired,
       image,
-      containerName: name('backend-container'),
+      containerName: name(`${appTypeLower}-container`),
       containerPort: config.deploymentConfig.targetGroup.port,
-      serviceName: name('backend-service'),
+      serviceName: name(`${appTypeLower}-service`),
       repositoryName: repoName,
       healthCheck: config.deploymentConfig.targetGroup.healthCheck,
       publicLoadBalancer: true, // ALB in public subnets
@@ -83,7 +85,7 @@ export class InfraStack extends cdk.Stack {
     // App permissions: S3 RW on task role
     bucket.grantReadWrite(svc.taskDefinition.taskRole);
 
-    new cdk.CfnOutput(this, name('BackendURL'), {
+    new cdk.CfnOutput(this, name(`${appType}URL`), {
       value: `http://${svc.loadBalancer.loadBalancerDnsName}`,
     });
   }

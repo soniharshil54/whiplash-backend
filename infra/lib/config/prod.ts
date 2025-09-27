@@ -2,7 +2,6 @@ export const prodConfig = {
   environment: 'prod',
   deploymentConfig: {
     container: {
-      // imageRepositoryName: 'whiplash-backend',
       instances: 1,
       memory: 512,
       cpu: 256,

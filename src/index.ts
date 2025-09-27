@@ -10,7 +10,14 @@ app.get("/api/hello", (req: Request, res: Response) => {
 
 app.get("/api/healthcheck", (req: Request, res: Response) => {
   console.log("healthcheck api called");
-  res.json({ message: "Healthcheck passed", version: '1.0.10' });
+  res.json({
+    message: "Healthcheck passed", 
+    version: '1.0.11', 
+    sampleEnvVar1: process.env.SAMPLE_VAR_KEY_1,
+    sampleEnvVar2: process.env.SAMPLE_VAR_KEY_2,
+    DEPLOY_ENV: process.env.DEPLOY_ENV,
+    PROJECT: process.env.PROJECT,
+  });
 });
 
 app.listen(port, () => {
