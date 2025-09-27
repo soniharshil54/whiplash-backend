@@ -82,6 +82,7 @@ pipelines:
           deployment: prod    # only here
       - step:
           <<: *deploy         # no deployment tag
+          deployment: prod    # only here
 
     staging:
       - step:
@@ -89,3 +90,4 @@ pipelines:
           deployment: staging # only here
       - step:
           <<: *deploy         # no deployment tag
+          deployment: staging # only here
