@@ -13,16 +13,24 @@ definitions:
           - echo "SAMPLE_VAR_KEY_1 ${SAMPLE_VAR_KEY_1}"
           # branch → deploy env
           - |
-            if [ "$BITBUCKET_BRANCH" = "main" ]; then DEPLOY_ENV="prod";
-            elif [ "$BITBUCKET_BRANCH" = "staging" ]; then DEPLOY_ENV="staging";
-            else echo "❌ Unsupported branch $BITBUCKET_BRANCH"; exit 1; fi
+            if [ "$BITBUCKET_BRANCH" = "main" ]; then
+              DEPLOY_ENV="prod"
+            elif [ "$BITBUCKET_BRANCH" = "staging" ]; then
+              DEPLOY_ENV="staging"
+            else
+              echo "❌ Unsupported branch $BITBUCKET_BRANCH"; exit 1
+            fi
             echo "$DEPLOY_ENV" > .deploy_env
-          # capture the variables you want available to later steps
+
+          # capture "almost everything" except CI internals
+          # (add/remove patterns as you see fit)
           - >
-            env | grep -E '^(APP_|VITE_|PROJECT|AWS_REGION|VPC_ID|CLUSTER_NAME|ECR_BACKEND_REPO_NAME|S3_BUCKET_NAME)='
+            env | grep -vE '^(BITBUCKET_|PIPES_|CI=|SHELL=|PWD=|HOME=|PATH=|SHLVL=|_=|HOSTNAME=|DOCKER_HOST=)'
             > .ci_env
           - echo "DEPLOY_ENV=$(cat .deploy_env)" >> .ci_env
-        artifacts: [ .deploy_env, .ci_env ]
+        artifacts:
+          - .deploy_env
+          - .ci_env
 
     - step: &build-push
         name: Build & Push (backend)
@@ -30,18 +38,33 @@ definitions:
         script:
           - apk add --no-cache aws-cli jq bash
           - set -euo pipefail
-          - set -a; source .ci_env; set +a
+
+          # source shared deployment env (allow unset during source)
+          - set +u; set -a; source .ci_env; set +a; set -u
+
+          # required
+          - '[ -n "${AWS_REGION:-}" ] || { echo "AWS_REGION is required"; exit 1; }'
+          - '[ -n "${PROJECT:-}" ]    || { echo "PROJECT is required"; exit 1; }'
+
+          # image + repo
           - export DOCKER_DEFAULT_PLATFORM=linux/amd64
           - REPO_NAME="${PROJECT}-${DEPLOY_ENV}-backend"
           - VERSION=$(cat VERSION)
           - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           - IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}:${VERSION}"
+
+          # ECR login + build + push
           - aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           - export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 IMAGE_URI
           - docker compose -f docker-compose.build.yml build
           - docker push "${IMAGE_URI}"
+
+          # hand off to deploy
           - echo "${VERSION}" > .version
-        artifacts: [ .deploy_env, .ci_env, .version ]
+        artifacts:
+          - .deploy_env
+          - .ci_env
+          - .version
 
     - step: &deploy
         image: node:20-alpine
@@ -49,13 +72,16 @@ definitions:
         script:
           - apk add --no-cache aws-cli bash jq
           - set -euo pipefail
-          - set -a; source .ci_env; set +a
-          - echo "SAMPLE_VAR_KEY_1 ${SAMPLE_VAR_KEY_1}"
+
+          # source shared deployment env (allow unset during source)
+          - set +u; set -a; source .ci_env; set +a; set -u
+          - echo "SAMPLE_VAR_KEY_1=${SAMPLE_VAR_KEY_1:-<unset>}"  # sanity check
+
           - DEPLOY_ENV=$(cat .deploy_env)
           - VERSION=$(cat .version)
 
-          - '[ -n "${AWS_REGION}" ] || { echo "AWS_REGION is required"; exit 1; }'
-          - '[ -n "${PROJECT}" ]    || { echo "PROJECT is required"; exit 1; }'
+          - '[ -n "${AWS_REGION:-}" ] || { echo "AWS_REGION is required"; exit 1; }'
+          - '[ -n "${PROJECT:-}" ]    || { echo "PROJECT is required"; exit 1; }'
 
           - STACK_NAME="${PROJECT}-backend-${DEPLOY_ENV}"
           - echo "🛠 Deploying to stack ${STACK_NAME} (env ${DEPLOY_ENV}) with version ${VERSION}"
@@ -67,7 +93,7 @@ definitions:
           - npx cdk context --clear || true
           - npx cdk deploy \
               --require-approval never \
-              -c context="${DEPLOY_ENV}" \
+              -c stage="${DEPLOY_ENV}" \
               -c version="${VERSION}"
 
 pipelines:
@@ -75,12 +101,12 @@ pipelines:
     main:
       - step:
           <<: *init
-          deployment: prod      # ← deployment tag ONLY here
+          deployment: prod      # deployment tag ONLY here
       - step: *build-push
       - step: *deploy
     staging:
       - step:
           <<: *init
-          deployment: staging   # ← deployment tag ONLY here
+          deployment: staging   # deployment tag ONLY here
       - step: *build-push
       - step: *deploy
