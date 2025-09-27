@@ -4,7 +4,7 @@ import { InfraStack } from '../lib/infra-stack';
 import { getConfigForStack } from '../lib/config';
 import { getRequiredEnvVar } from '../lib/common';
 
-console.log('process.env --- infra.ts', process.env);
+console.log('process.env --- infra.ts');
 
 const baseProjectName = getRequiredEnvVar('PROJECT')
 const projectName = `${baseProjectName}-backend`;
