@@ -48,38 +48,29 @@ definitions:
           - .version
 
     - step: &deploy
+        # Use a Node image so we have node+npm for CDK
+        image: node:20-alpine
         name: Deploy (update FrontendImageTag)
         script:
-          - apk add --no-cache aws-cli jq bash
+          - apk add --no-cache aws-cli bash jq
           - set -euo pipefail
 
           - DEPLOY_ENV=$(cat .deploy_env)
           - VERSION=$(cat .version)
 
-          # required
           - '[ -n "${AWS_REGION}" ] || { echo "AWS_REGION is required"; exit 1; }'
           - '[ -n "${PROJECT}" ]    || { echo "PROJECT is required"; exit 1; }'
 
           - STACK_NAME="${PROJECT}-backend-${DEPLOY_ENV}"
           - echo "🛠 Deploying to stack ${STACK_NAME} (env ${DEPLOY_ENV}) with version ${VERSION}"
 
-          # wait if stack busy
-          - |
-            STATUS=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --query "Stacks[0].StackStatus" --output text 2>/dev/null || true)
-            if [ -z "$STATUS" ] || [ "$STATUS" = "STACK_NOT_FOUND" ]; then
-              echo "❌ Stack ${STACK_NAME} not found. Create it once from infra (cdk deploy)."; exit 1
-            fi
-            if [ "$STATUS" = "CREATE_IN_PROGRESS" ]; then
-              aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}"
-            elif [ "$STATUS" = "UPDATE_IN_PROGRESS" ] || [ "$STATUS" = "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" ]; then
-              aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}"
-            fi
-
-          # image-only update; envs are baked at build time
-          - |
-            set +e
-            cdk context --clear
-            cdk deploy \
+          # ensure infra deps are installed
+          - cd infra
+          - npm ci              # installs aws-cdk CLI if listed as devDependency
+          - npx cdk --version   # sanity
+          # optional: refresh context if you rely on lookups
+          - npx cdk context --clear || true
+          - npx cdk deploy \
               --require-approval never \
               --context version="${VERSION}"
 
