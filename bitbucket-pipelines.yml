@@ -91,7 +91,8 @@ definitions:
           - npm ci
           - npx cdk --version
           - npx cdk context --clear || true
-          - npx cdk deploy \
+          # - npx cdk deploy whiplash-backend-staging --require-approval never -c stage="staging" -c version="1.0.10"
+          - npx cdk deploy "${PROJECT}-backend-${DEPLOY_ENV}" \
               --require-approval never \
               -c stage="${DEPLOY_ENV}" \
               -c version="${VERSION}"
