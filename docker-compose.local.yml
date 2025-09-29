@@ -1,0 +1,9 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: whiplash-backend:local
+    ports:
+      - "3001:3000"
+    
