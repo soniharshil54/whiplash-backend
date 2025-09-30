@@ -10,7 +10,6 @@ definitions:
         script:
           - apk add --no-cache bash coreutils
           - set -euo pipefail
-          - echo "SAMPLE_VAR_KEY_1 ${SAMPLE_VAR_KEY_1}"
           # branch → deploy env
           - |
             if [ "$BITBUCKET_BRANCH" = "main" ]; then
