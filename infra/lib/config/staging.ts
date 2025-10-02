@@ -1,3 +1,5 @@
+import { getRequiredEnvVar } from "../common";
+
 export const stagingConfig = {
   environment: 'staging',
   deploymentConfig: {
@@ -7,9 +9,9 @@ export const stagingConfig = {
       cpu: 256,
     },
     targetGroup: {
-      port: 3000,
+      port: Number(getRequiredEnvVar('PORT')),
       healthCheck: {
-        port: '3000',
+        port: getRequiredEnvVar('PORT'),
         path: '/api/healthcheck',
         interval: 30,
         timeout: 10,
@@ -19,6 +21,12 @@ export const stagingConfig = {
     },
     service: {
       desiredCount: 2,
+    },
+  },
+  redis: {
+    container: {
+      memory: 512,
+      cpu: 256,
     },
   },
 };

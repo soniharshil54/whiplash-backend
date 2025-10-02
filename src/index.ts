@@ -17,6 +17,7 @@ app.get("/api/healthcheck", (req: Request, res: Response) => {
     sampleEnvVar1: process.env.SAMPLE_VAR_KEY_1,
     sampleEnvVar2: process.env.SAMPLE_VAR_KEY_2,
     DEPLOY_ENV: process.env.DEPLOY_ENV,
+    REDIS_HOST: process.env.REDIS_HOST,
     PROJECT: process.env.PROJECT,
   });
 });

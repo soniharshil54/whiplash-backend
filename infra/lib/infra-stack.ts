@@ -5,7 +5,9 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import { createRedisFargateService } from './resources/services/redis-fargate';
 import { Config } from '../lib/config/types/config';
+import { BACKEND_ENV_VARS } from '../lib/config/constants';
 
 import { nameResource, getAllEnvVars, getEnvVars } from './common';
 import { createAlbFargateService } from './resources/services/alb-fargate';
@@ -79,11 +81,31 @@ export class InfraStack extends cdk.Stack {
       repositoryName: repoName,
       healthCheck: config.deploymentConfig.targetGroup.healthCheck,
       publicLoadBalancer: true, // ALB in public subnets
-      environment: getEnvVars(['PROJECT', 'VERSION', 'DEPLOY_ENV', 'SAMPLE_VAR_KEY_1', 'SAMPLE_VAR_KEY_2']),
+      environment: getEnvVars(BACKEND_ENV_VARS),
     });
 
     // App permissions: S3 RW on task role
     bucket.grantReadWrite(svc.taskDefinition.taskRole);
+
+    // Grab the backend service SG (created by the ALB Fargate pattern)
+    const backendServiceSg = svc.service.connections.securityGroups[0];
+
+    // Create Redis in same VPC/cluster with Cloud Map DNS
+    const redis = createRedisFargateService(this, name('redis'), {
+      cluster,
+      vpc,
+      serviceName: name('redis-service'),
+      dnsServiceName: name('redis'),                 // e.g. whiplash-dev-redis
+      namespaceName: name('local'),                  // e.g. whiplash-dev-local
+      desiredCount: 1,
+      allowFrom: [backendServiceSg],                 // allow backend -> redis:6379
+      cpu: config.redis.container.cpu,
+      memoryMiB: config.redis.container.memory,
+    });
+
+    // Pass Redis connection info to backend task env
+    svc.taskDefinition.defaultContainer?.addEnvironment('REDIS_HOST', redis.host);
+    svc.taskDefinition.defaultContainer?.addEnvironment('REDIS_PORT', String(redis.port));
 
     new cdk.CfnOutput(this, name(`${appType}URL`), {
       value: `http://${svc.loadBalancer.loadBalancerDnsName}`,

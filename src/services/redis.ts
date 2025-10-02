@@ -7,6 +7,12 @@ type RedisClient = ReturnType<typeof createClient>;
 let redisClient: RedisClient | null = null;
 
 async function getRedis(): Promise<RedisClient> {
+  console.log("Getting Redis client...");
+  console.log("Redis env:", {
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT,
+    password: process.env.REDIS_PASSWORD ? "****" : undefined,
+  });
   if (redisClient?.isOpen) return redisClient;
 
   const host = process.env.REDIS_HOST;

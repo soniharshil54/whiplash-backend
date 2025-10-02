@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ──────────────── CONFIG ────────────────
-: "${AWS_REGION:=us-east-1}"
-: "${STAGE:=dev}"
-PROJECT="whiplash"
-export PROJECT
+# load env variables from .env file if it exists
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
+
+echo "Using environment variables:"
+echo "  AWS_REGION: ${AWS_REGION}"
+echo "  DEPLOY_ENV: ${DEPLOY_ENV}"
+
 export AWS_PROFILE="soni-1214"
-REPO_NAME="${PROJECT}-${STAGE}-backend"
-STACK_NAME="${PROJECT}-${STAGE}"
+REPO_NAME="${PROJECT}-${DEPLOY_ENV}-backend"
+STACK_NAME="${PROJECT}-${DEPLOY_ENV}"
 INFRA_DIR="./infra"
 
 # ──────────────── VERSION & IMAGE ────────────────
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 VERSION=$(cat VERSION)
+export VERSION
 IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}:${VERSION}"
 
 echo "🚀 Deploying backend version: ${VERSION}"
@@ -36,7 +41,7 @@ cd "${INFRA_DIR}"
 cdk context --clear
 cdk deploy \
   --require-approval never \
-  --context stage="${STAGE}" \
+  --context stage="${DEPLOY_ENV}" \
   --context version="${VERSION}"
 
 echo "✅ Backend ${VERSION} deployed successfully"

@@ -1,3 +1,5 @@
+import { getRequiredEnvVar } from '../common';
+
 export const devConfig = {
   environment: 'dev',
   deploymentConfig: {
@@ -7,9 +9,9 @@ export const devConfig = {
       cpu: 256,
     },
     targetGroup: {
-      port: 3000,
+      port: Number(getRequiredEnvVar('PORT')),
       healthCheck: {
-        port: '3000',
+        port: getRequiredEnvVar('PORT'),
         path: '/api/healthcheck',
         interval: 30,
         timeout: 10,
@@ -19,6 +21,12 @@ export const devConfig = {
     },
     service: {
       desiredCount: 1,
+    },
+  },
+  redis: {
+    container: {
+      memory: 512,
+      cpu: 256,
     },
   },
 };

@@ -22,4 +22,10 @@ export type Config = {
       desiredCount: number;
     };
   };
+  redis: {
+    container: {
+      memory: number;
+      cpu: number;
+    };
+  };
 };
