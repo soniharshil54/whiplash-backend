@@ -9,7 +9,7 @@ export interface RedisFargateOptions {
   vpc: ec2.IVpc;
   serviceName: string;         // e.g. name('redis-service')
   dnsServiceName: string;      // e.g. name('redis')
-  namespaceName: string;       // e.g. name('local') -> <dnsServiceName>.<namespaceName>
+  namespace: sd.IPrivateDnsNamespace;
   cpu?: number;                // default 256
   memoryMiB?: number;          // default 512
   desiredCount?: number;       // default 1
@@ -24,12 +24,7 @@ export function createRedisFargateService(
   const cpu        = opts.cpu;
   const memoryMiB  = opts.memoryMiB;
   const desired    = opts.desiredCount;
-
-  // Private namespace for Service Discovery (one-time per VPC; safe to re-use by name)
-  const namespace = new sd.PrivateDnsNamespace(scope, `${id}Ns`, {
-    name: opts.namespaceName, // e.g. "whiplash-dev.local"
-    vpc: opts.vpc,
-  });
+  const namespace  = opts.namespace;
 
   // SG for Redis
   const redisSg = new ec2.SecurityGroup(scope, `${id}Sg`, {
@@ -84,11 +79,13 @@ export function createRedisFargateService(
     }
   }
 
+  const fqdn = `${opts.dnsServiceName}.${opts.namespace.namespaceName}`;
+
   return {
     service,
     securityGroup: redisSg,
     // FQDN your backend should use:
-    host: `${opts.dnsServiceName}.${namespace.namespaceName}`,
+    host: fqdn,
     port: 6379,
   };
 }

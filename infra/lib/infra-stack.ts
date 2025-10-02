@@ -5,6 +5,8 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as sd from 'aws-cdk-lib/aws-servicediscovery';
+
 import { createRedisFargateService } from './resources/services/redis-fargate';
 import { Config } from '../lib/config/types/config';
 import { BACKEND_ENV_VARS } from '../lib/config/constants';
@@ -43,6 +45,9 @@ export class InfraStack extends cdk.Stack {
     const clusterName = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/clusterName`);
     const repoName    = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/ecr${appType}RepoName`);
     const bucketName  = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/s3BucketName`);
+    const namespaceId   = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/cloudMapNamespaceId`);
+    const namespaceName = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/cloudMapNamespaceName`);
+    const namespaceArn  = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/cloudMapNamespaceArn`);
 
     // Optional: if you also exported public/private subnet ids and want to force placement,
     // you can read them here too (valueForStringParameter is fine).
@@ -90,13 +95,19 @@ export class InfraStack extends cdk.Stack {
     // Grab the backend service SG (created by the ALB Fargate pattern)
     const backendServiceSg = svc.service.connections.securityGroups[0];
 
+    const cloudMapNs = sd.PrivateDnsNamespace.fromPrivateDnsNamespaceAttributes(this, name('ImportedNs'), {
+      namespaceId,
+      namespaceName, // e.g. "<project>-<stage>.local"
+      namespaceArn,
+    });
+
     // Create Redis in same VPC/cluster with Cloud Map DNS
     const redis = createRedisFargateService(this, name('redis'), {
       cluster,
       vpc,
       serviceName: name('redis-service'),
       dnsServiceName: name('redis'),                 // e.g. whiplash-dev-redis
-      namespaceName: name('local'),                  // e.g. whiplash-dev-local
+      namespace: cloudMapNs,
       desiredCount: 1,
       allowFrom: [backendServiceSg],                 // allow backend -> redis:6379
       cpu: config.redis.container.cpu,
