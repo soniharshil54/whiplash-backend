@@ -5,6 +5,8 @@ set -euo pipefail
 : "${AWS_REGION:=us-east-1}"
 : "${STAGE:=dev}"
 PROJECT="whiplash"
+export PROJECT
+export AWS_PROFILE="soni-1214"
 REPO_NAME="${PROJECT}-${STAGE}-backend"
 STACK_NAME="${PROJECT}-${STAGE}"
 INFRA_DIR="./infra"
@@ -36,7 +38,5 @@ cdk deploy \
   --require-approval never \
   --context stage="${STAGE}" \
   --context version="${VERSION}"
-
-cd - >/dev/null
 
 echo "✅ Backend ${VERSION} deployed successfully"
