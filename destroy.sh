@@ -9,14 +9,12 @@ fi
 echo "Using environment variables:"
 echo "  AWS_REGION: ${AWS_REGION}"
 echo "  DEPLOY_ENV: ${DEPLOY_ENV}"
+echo "  AWS_PROFILE: ${AWS_PROFILE}"
 
-export AWS_PROFILE="soni-1214"
-REPO_NAME="${PROJECT}-${DEPLOY_ENV}-backend"
-STACK_NAME="${PROJECT}-${DEPLOY_ENV}"
 INFRA_DIR="./infra"
 
 # ──────────────── CDK DEPLOY (update stack with new image tag) ────────────────
-echo "🚀 Destroying CloudFormation stack ${STACK_NAME}"
+echo "🚀 Destroying CloudFormation DEPLOY_ENV ${DEPLOY_ENV}"
 
 cd "${INFRA_DIR}"
 
