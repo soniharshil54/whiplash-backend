@@ -45,3 +45,33 @@ cdk deploy \
   --context version="${VERSION}"
 
 echo "✅ Backend ${VERSION} deployed successfully"
+
+BACKEND_ALB=$(aws cloudformation describe-stacks \
+  --stack-name whiplash-backend-dev \
+  --query "Stacks[0].Outputs[?contains(OutputKey, 'BackendAlbDns')].OutputValue | [0]" \
+  --output text)
+
+if [[ -z "$BACKEND_ALB" || "$BACKEND_ALB" == "None" ]]; then
+  echo "❌ Error: Could not retrieve Backend ALB DNS from CloudFormation outputs"
+  exit 1
+fi
+
+echo "✅ Backend ALB DNS: $BACKEND_ALB"
+
+echo "🚀 Updating core infrastructure stack ${PROJECT}-${DEPLOY_ENV}"
+
+parameterKey="BackendAlbDns"
+echo "Parameter Key: $parameterKey"
+aws cloudformation update-stack \
+  --stack-name ${PROJECT}-${DEPLOY_ENV} \
+  --use-previous-template \
+  --parameters \
+    ParameterKey=$parameterKey,ParameterValue=$BACKEND_ALB \
+    ParameterKey=FrontendAlbDns,UsePreviousValue=true \
+  --capabilities CAPABILITY_IAM \
+  --no-cli-pager \
+  || echo "No updates needed or stack is already updating"
+
+# Wait for stack update to complete (optional)
+aws cloudformation wait stack-update-complete \
+  --stack-name ${PROJECT}-${DEPLOY_ENV}

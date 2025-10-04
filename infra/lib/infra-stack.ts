@@ -11,7 +11,7 @@ import { createRedisFargateService } from './resources/services/redis-fargate';
 import { Config } from '../lib/config/types/config';
 import { BACKEND_ENV_VARS } from '../lib/config/constants';
 
-import { nameResource, getAllEnvVars, getEnvVars } from './common';
+import { nameResource, getEnvVars } from './common';
 import { createAlbFargateService } from './resources/services/alb-fargate';
 
 interface InfraStackProps extends cdk.StackProps {
@@ -70,7 +70,7 @@ export class InfraStack extends cdk.Stack {
     // S3 bucket (shared from common-infra)
     const bucket = s3.Bucket.fromBucketName(this, 'AppBucket', bucketName);
 
-    console.log('process.env ---', getAllEnvVars());
+    // console.log('process.env ---', getAllEnvVars());
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Service (pattern creates a **public ALB** in the VPC’s public subnets)
@@ -120,6 +120,10 @@ export class InfraStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, name(`${appType}URL`), {
       value: `http://${svc.loadBalancer.loadBalancerDnsName}`,
+    });
+
+    new cdk.CfnOutput(this, name('BackendAlbDns'), {
+      value: svc.loadBalancer.loadBalancerDnsName,
     });
   }
 }
