@@ -16,6 +16,7 @@ app.get("/api/healthcheck", (req: Request, res: Response) => {
     version: process.env.VERSION, 
     DEPLOY_ENV: process.env.DEPLOY_ENV,
     PROJECT: process.env.PROJECT,
+    note: '1034'
   });
 });
 
