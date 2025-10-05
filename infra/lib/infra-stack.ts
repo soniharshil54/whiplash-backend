@@ -122,7 +122,7 @@ export class InfraStack extends cdk.Stack {
       value: `http://${svc.loadBalancer.loadBalancerDnsName}`,
     });
 
-    new cdk.CfnOutput(this, name('BackendAlbDns'), {
+    new cdk.CfnOutput(this, name(`${appType}AlbDns`), {
       value: svc.loadBalancer.loadBalancerDnsName,
     });
   }
