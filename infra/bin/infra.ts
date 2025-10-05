@@ -6,8 +6,9 @@ import { getRequiredEnvVar } from '../lib/common';
 
 console.log('process.env --- infra.ts');
 
+const appType = 'backend'; // 'backend' | 'frontend'
 const baseProjectName = getRequiredEnvVar('PROJECT')
-const projectName = `${baseProjectName}-backend`;
+const projectName = `${baseProjectName}-${appType}`; // e.g. whiplash-backend
 // const version = getRequiredEnvVar('VERSION');
 
 const app = new cdk.App();
@@ -39,5 +40,5 @@ new InfraStack(app, stage, {
   baseProjectName,
   imageTag: app.node.tryGetContext('version'),
   config,
-  appType: 'Backend',
+  appType,
 });

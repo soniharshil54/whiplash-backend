@@ -13,7 +13,16 @@ app.get("/api/healthcheck", (req: Request, res: Response) => {
   console.log("healthcheck api called");
   res.json({
     message: "Healthcheck passed", 
-    version: '1.0.15', 
+    version: process.env.VERSION, 
+    DEPLOY_ENV: process.env.DEPLOY_ENV,
+    PROJECT: process.env.PROJECT,
+  });
+});
+
+app.get("/api/envs", (req: Request, res: Response) => {
+  console.log("envs api called");
+  res.json({
+    version: process.env.VERSION,
     sampleEnvVar1: process.env.SAMPLE_VAR_KEY_1,
     sampleEnvVar2: process.env.SAMPLE_VAR_KEY_2,
     DEPLOY_ENV: process.env.DEPLOY_ENV,
