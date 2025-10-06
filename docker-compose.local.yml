@@ -4,16 +4,33 @@ services:
       context: .
       dockerfile: Dockerfile
     image: whiplash-backend:local
+    env_file: .env
     environment:
       - PORT=${PORT}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # 👇 Updated MongoDB URI for no-auth connection
+      - MONGODB_URI=mongodb://mongo:27017/mydatabase
     ports:
       - "3001:${PORT}"
+    depends_on:
+      - redis
+      - mongo
 
   redis:
     image: redis:8.2.1-alpine
     ports:
       - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
-    
+
+  mongo:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    # 👇 Environment variables for username/password are removed
+    volumes:
+      # Data is still persisted
+      - mongodb_data:/data/db
+
+volumes:
+  mongodb_data:

@@ -1,18 +1,11 @@
 import { createClient } from "redis";
 
-// 👇 exact compile-time type of createClient() in YOUR install
 type RedisClient = ReturnType<typeof createClient>;
 
-// Redis singleton
 let redisClient: RedisClient | null = null;
 
 async function getRedis(): Promise<RedisClient> {
   console.log("Getting Redis client...");
-  console.log("Redis env:", {
-    host: process.env.REDIS_HOST,
-    port: process.env.REDIS_PORT,
-    password: process.env.REDIS_PASSWORD ? "****" : undefined,
-  });
   if (redisClient?.isOpen) return redisClient;
 
   const host = process.env.REDIS_HOST;
@@ -35,25 +28,9 @@ async function getRedis(): Promise<RedisClient> {
   return client;
 }
 
-async function shutdown() {
-  console.log("Shutting down...");
-  try {
-    if (redisClient?.isOpen) await redisClient.quit();
-  } finally {
-    process.exit(0);
-  }
+async function shutdownRedis() {
+  console.log("Shutting down Redis...");
+  if (redisClient?.isOpen) await redisClient.quit();
 }
 
-export { getRedis, shutdown };
-
-// Handle process exit
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-  shutdown();
-});
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
-  shutdown();
-});
+export { getRedis, shutdownRedis };

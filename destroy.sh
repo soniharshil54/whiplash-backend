@@ -10,6 +10,13 @@ fi
 # load env variables from .cdk_env file
 export $(grep -v '^#' .cdk_env | xargs)
 
+# load env variables from .env file if APP_TYPE is 'backend'
+if [[ "${APP_TYPE}" == "backend" ]]; then
+  if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+  fi
+fi
+
 echo "Using environment variables:"
 echo "  AWS_REGION: ${AWS_REGION}"
 echo "  DEPLOY_ENV: ${DEPLOY_ENV}"
