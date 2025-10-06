@@ -36,9 +36,12 @@ definitions:
             fi
             echo "$DEPLOY_ENV" > .deploy_env
           
-          - >
-            env | grep -vE '^(BITBUCKET_|PIPES_|CI=|SHELL=|PWD=|HOME=|PATH=|SHLVL=|_=|HOSTNAME=|DOCKER_HOST=)'
-            > .ci_env
+          - |
+            env | grep -vE '^(BITBUCKET_|PIPES_|CI=|SHELL=|PWD=|HOME=|PATH=|SHLVL=|_=|HOSTNAME=|DOCKER_HOST=)' | while IFS= read -r line; do
+              key="${line%%=*}"
+              value="${line#*=}"
+              echo "${key}='${value}'" >> .ci_env
+            done
           - echo "DEPLOY_ENV=$(cat .deploy_env)" >> .ci_env
           - echo "OTHER_APP_TYPE=$OTHER_APP_TYPE" >> .ci_env
 
@@ -109,6 +112,7 @@ definitions:
     - step: &deploy
         image: node:20-alpine
         name: Deploy (CDK)
+        trigger: manual
         script:
           - apk add --no-cache aws-cli bash jq
           - set -euo pipefail
@@ -163,6 +167,11 @@ definitions:
           - echo "Waiting for stack update to complete..."
           - aws cloudformation wait stack-update-complete --stack-name ${CORE_STACK_NAME}
           - echo "✅ Core infrastructure stack ${CORE_STACK_NAME} updated successfully"
+          - echo "Now invalidate cloudfront cache"
+          - DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name ${CORE_STACK_NAME} --query "Stacks[0].Outputs[?contains(OutputKey, 'CloudFrontDistributionId')].OutputValue | [0]" --output text)
+          - echo "Creating invalidation for DISTRIBUTION_ID - $DISTRIBUTION_ID"
+          - aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*" --no-cli-pager
+          - echo "Invalidation created for cloudfront distribution id $DISTRIBUTION_ID"
 
     - step: &destroy
         image: node:20-alpine
