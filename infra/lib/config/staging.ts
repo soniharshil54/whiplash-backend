@@ -21,6 +21,8 @@ export const stagingConfig = {
     },
     service: {
       desiredCount: 2,
+      minCount: 1,
+      maxCount: 2,
     },
   },
   redis: {

@@ -34,6 +34,8 @@ export class InfraStack extends cdk.Stack {
 
     const imageTag = props.imageTag;
     const desired  = config.deploymentConfig.service.desiredCount;
+    const min  = config.deploymentConfig.service.minCount;
+    const max  = config.deploymentConfig.service.maxCount;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // SSM reads
@@ -78,6 +80,8 @@ export class InfraStack extends cdk.Stack {
       cpu: config.deploymentConfig.container.cpu,
       memoryLimitMiB: config.deploymentConfig.container.memory,
       desiredCount: desired,
+      minCount:min,
+      maxCount: max,
       image,
       containerName: name(`${appType}-container`),
       containerPort: config.deploymentConfig.targetGroup.port,

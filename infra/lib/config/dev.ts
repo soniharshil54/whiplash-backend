@@ -21,6 +21,8 @@ export const devConfig = {
     },
     service: {
       desiredCount: 1,
+      minCount: 1,
+      maxCount: 2,
     },
   },
   redis: {
