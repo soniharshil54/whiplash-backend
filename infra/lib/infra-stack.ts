@@ -120,6 +120,7 @@ export class InfraStack extends cdk.Stack {
     // Pass Redis connection info to backend task env
     svc.taskDefinition.defaultContainer?.addEnvironment('REDIS_HOST', redis.host);
     svc.taskDefinition.defaultContainer?.addEnvironment('REDIS_PORT', String(redis.port));
+    svc.taskDefinition.defaultContainer?.addEnvironment('AWS_S3_BUCKET_NAME', String(bucketName));
 
     new cdk.CfnOutput(this, name(`${appType}URL`), {
       value: `http://${svc.loadBalancer.loadBalancerDnsName}`,
