@@ -73,9 +73,16 @@ cdk context --clear
 cdk deploy \
   --require-approval never \
   --context stage="${DEPLOY_ENV}" \
-  --context version="${VERSION}"
+  --context version="${VERSION}" \
+  --parameters TlsEnabled="${TLS_ENABLED:-false}" \
+  --parameters AlbDomainName="${ALB_DOMAIN_NAME:-}" \
+  --parameters HostedZoneName="${HOSTED_ZONE_NAME:-}" \
+  --parameters CertificateArn="${CERTIFICATE_ARN:-}"
 
 echo "✅ ${APP_TYPE} ${VERSION} deployed successfully"
+
+# --- application stack is deployed, now we will deploy core stack with alb received from app ---
+
 
 APP_ALB_KEY="${APP_TYPE}AlbDns"
 APP_ALB=$(aws cloudformation describe-stacks \
@@ -92,6 +99,20 @@ echo "✅ ${APP_TYPE} ALB DNS: $APP_ALB"
 
 echo "🚀 Updating core infrastructure stack ${CORE_STACK_NAME} with ${APP_TYPE} ALB DNS"
 
+# Derive protocol from TLS_ENABLED (true/1/yes → HTTPS, else HTTP)
+_tls="${TLS_ENABLED:-false}"
+_tls_lower="$(echo "${_tls}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${_tls_lower}" == "true" || "${_tls_lower}" == "1" || "${_tls_lower}" == "yes" ]]; then
+  ORIGIN_PROTOCOL="HTTPS"
+else
+  ORIGIN_PROTOCOL="HTTP"
+fi
+echo "🔐 Origin protocol for ${APP_TYPE}: ${ORIGIN_PROTOCOL}"
+APP_PROTOCOL_KEY="${APP_TYPE}AlbProtocol"
+echo "${APP_TYPE} Protocol Key: $APP_PROTOCOL_KEY"
+OTHER_APP_PROTOCOL_KEY="${OTHER_APP_TYPE}AlbProtocol"
+echo "${OTHER_APP_TYPE} Protocol Key: $OTHER_APP_PROTOCOL_KEY"
+
 echo "${APP_TYPE} ALB Key: $APP_ALB_KEY, Value: $APP_ALB"
 OTHER_APP_ALB_KEY="${OTHER_APP_TYPE}AlbDns"
 echo "${OTHER_APP_TYPE} ALB Key: $OTHER_APP_ALB_KEY"
@@ -101,6 +122,8 @@ aws cloudformation update-stack \
   --parameters \
     ParameterKey=$APP_ALB_KEY,ParameterValue=$APP_ALB \
     ParameterKey=$OTHER_APP_ALB_KEY,UsePreviousValue=true \
+    ParameterKey=$APP_PROTOCOL_KEY,ParameterValue=$ORIGIN_PROTOCOL \
+    ParameterKey=$OTHER_APP_PROTOCOL_KEY,UsePreviousValue=true \
     ParameterKey=EnableCustomDomains,UsePreviousValue=true \
     ParameterKey=CustomDomainsCsv,UsePreviousValue=true \
     ParameterKey=AcmCertificateArnUsEast1,UsePreviousValue=true \

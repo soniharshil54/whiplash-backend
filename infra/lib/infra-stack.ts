@@ -23,6 +23,8 @@ interface InfraStackProps extends cdk.StackProps {
   appType: 'backend' | 'frontend';
 }
 
+// ... existing imports and interface ...
+
 export class InfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: InfraStackProps) {
     super(scope, id, props);
@@ -37,12 +39,9 @@ export class InfraStack extends cdk.Stack {
     const min  = config.deploymentConfig.service.minCount;
     const max  = config.deploymentConfig.service.maxCount;
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // SSM reads
-    // MUST be concrete at synth for fromLookup:
-    const vpcId = ssm.StringParameter.valueFromLookup(this, `/${baseProjectName}/${stage}/vpcId`);
+    // ... existing SSM reads and imports ...
 
-    // These can be tokens (resolved at deploy)
+    const vpcId = ssm.StringParameter.valueFromLookup(this, `/${baseProjectName}/${stage}/vpcId`);
     const clusterName = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/clusterName`);
     const repoName    = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/${appType}EcrRepoName`);
     const bucketName  = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/s3BucketName`);
@@ -50,37 +49,25 @@ export class InfraStack extends cdk.Stack {
     const namespaceName = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/cloudMapNamespaceName`);
     const namespaceArn  = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/cloudMapNamespaceArn`);
 
-    // Optional: if you also exported public/private subnet ids and want to force placement,
-    // you can read them here too (valueForStringParameter is fine).
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Import VPC via lookup (now allowed because vpcId is a real string)
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId });
-
-    // Import Cluster (needs the VPC object; SSM token for name is fine)
     const cluster = ecs.Cluster.fromClusterAttributes(this, 'Cluster', {
       clusterName,
       vpc,
-      securityGroups: [], // supply if you exported one
+      securityGroups: [],
     });
 
-    // ECR repo and image
     const repo  = ecr.Repository.fromRepositoryName(this, `${appType}Repo`, repoName);
     const image = ecs.ContainerImage.fromEcrRepository(repo, imageTag);
-
-    // S3 bucket (shared from common-infra)
     const bucket = s3.Bucket.fromBucketName(this, 'AppBucket', bucketName);
 
-    // console.log('process.env ---', getAllEnvVars());
+    // ... service creation ...
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Service (pattern creates a **public ALB** in the VPC’s public subnets)
-    const svc = createAlbFargateService(this, name(`${appType}Service`), {
+    const result = createAlbFargateService(this, name(`${appType}Service`), {
       cluster,
       cpu: config.deploymentConfig.container.cpu,
       memoryLimitMiB: config.deploymentConfig.container.memory,
       desiredCount: desired,
-      minCount:min,
+      minCount: min,
       maxCount: max,
       image,
       containerName: name(`${appType}-container`),
@@ -88,46 +75,70 @@ export class InfraStack extends cdk.Stack {
       serviceName: name(`${appType}-service`),
       repositoryName: repoName,
       healthCheck: config.deploymentConfig.targetGroup.healthCheck,
-      publicLoadBalancer: true, // ALB in public subnets
+      publicLoadBalancer: true,
       environment: getEnvVars(CONTAINER_ENV_VARS),
     });
 
-    // App permissions: S3 RW on task role
-    bucket.grantReadWrite(svc.taskDefinition.taskRole);
+    const svc = result.service;
 
-    // Grab the backend service SG (created by the ALB Fargate pattern)
+    bucket.grantReadWrite(svc.taskDefinition.taskRole);
     const backendServiceSg = svc.service.connections.securityGroups[0];
 
     const cloudMapNs = sd.PrivateDnsNamespace.fromPrivateDnsNamespaceAttributes(this, name('ImportedNs'), {
       namespaceId,
-      namespaceName, // e.g. "<project>-<stage>.local"
+      namespaceName,
       namespaceArn,
     });
 
-    // Create Redis in same VPC/cluster with Cloud Map DNS
     const redis = createRedisFargateService(this, name('redis'), {
       cluster,
       vpc,
       serviceName: name('redis-service'),
-      dnsServiceName: name('redis'),                 // e.g. whiplash-dev-redis
+      dnsServiceName: name('redis'),
       namespace: cloudMapNs,
       desiredCount: 1,
-      allowFrom: [backendServiceSg],                 // allow backend -> redis:6379
+      allowFrom: [backendServiceSg],
       cpu: config.redis.container.cpu,
       memoryMiB: config.redis.container.memory,
     });
 
-    // Pass Redis connection info to backend task env
     svc.taskDefinition.defaultContainer?.addEnvironment('REDIS_HOST', redis.host);
     svc.taskDefinition.defaultContainer?.addEnvironment('REDIS_PORT', String(redis.port));
     svc.taskDefinition.defaultContainer?.addEnvironment('AWS_S3_BUCKET_NAME', String(bucketName));
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Outputs (conditional based on TLS enabled)
+    // ─────────────────────────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, name(`${appType}URL`), {
-      value: `http://${svc.loadBalancer.loadBalancerDnsName}`,
+      value: cdk.Fn.conditionIf(
+        result.tlsEnabledCondition.logicalId,  // 👈 Use condition's logicalId
+        `https://${result.domainNameParam.valueAsString}`,
+        `http://${svc.loadBalancer.loadBalancerDnsName}`
+      ).toString(),
+      description: `${appType} URL (HTTPS if TLS enabled, otherwise HTTP ALB DNS)`,
     });
 
     new cdk.CfnOutput(this, name(`${appType}AlbDns`), {
+      value: cdk.Fn.conditionIf(
+        result.tlsEnabledCondition.logicalId,  // 👈 Use condition's logicalId
+        `${result.domainNameParam.valueAsString}`,
+        `${svc.loadBalancer.loadBalancerDnsName}`
+      ).toString(),
+      description: `${appType} ALB DNS name`,
+    });
+
+    new cdk.CfnOutput(this, name(`${appType}AlbAwsDns`), {
       value: svc.loadBalancer.loadBalancerDnsName,
+      description: `${appType} ALB DNS name`,
+    });
+
+    new cdk.CfnOutput(this, name(`${appType}CustomDomain`), {
+      value: cdk.Fn.conditionIf(
+        result.tlsEnabledCondition.logicalId,  // 👈 Use condition's logicalId
+        result.domainNameParam.valueAsString,
+        'N/A - TLS not enabled'
+      ).toString(),
+      description: `${appType} custom domain (only if TLS enabled)`,
     });
   }
 }
