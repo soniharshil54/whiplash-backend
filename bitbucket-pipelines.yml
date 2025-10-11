@@ -31,7 +31,9 @@ definitions:
 
           # validate aws credentials
           - export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          - AWS_ACCOUNT_ID_V2=$(aws sts get-caller-identity --query Account --output text)
           - echo "  AWS_ACCOUNT_ID - ${AWS_ACCOUNT_ID}"
+          - echo "  AWS_ACCOUNT_ID_V2 - ${AWS_ACCOUNT_ID_V2}"
 
           # set OTHER_APP_TYPE based on APP_TYPE
           - |
