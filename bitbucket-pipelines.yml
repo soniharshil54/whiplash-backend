@@ -62,9 +62,9 @@ definitions:
           - _tls_lower="$(echo "${_tls}" | tr '[:upper:]' '[:lower:]')"
           - |
             if [[ "${_tls_lower}" == "true" || "${_tls_lower}" == "1" || "${_tls_lower}" == "yes" ]]; then
-              ORIGIN_PROTOCOL="HTTPS"
+              export ORIGIN_PROTOCOL="HTTPS"
             else
-              ORIGIN_PROTOCOL="HTTP"
+              export ORIGIN_PROTOCOL="HTTP"
             fi
 
           - echo "🔐 Origin protocol for ${APP_TYPE} - ${ORIGIN_PROTOCOL}"
