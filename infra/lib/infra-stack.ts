@@ -52,6 +52,7 @@ export class InfraStack extends cdk.Stack {
     const namespaceId   = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/cloudMapNamespaceId`);
     const namespaceName = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/cloudMapNamespaceName`);
     const namespaceArn  = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/cloudMapNamespaceArn`);
+    const privateBucketName = ssm.StringParameter.valueForStringParameter(this, `/${baseProjectName}/${stage}/privateS3BucketName`);
 
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId });
     const cluster = ecs.Cluster.fromClusterAttributes(this, 'Cluster', {
@@ -63,6 +64,7 @@ export class InfraStack extends cdk.Stack {
     const repo  = ecr.Repository.fromRepositoryName(this, `${appType}Repo`, repoName);
     const image = ecs.ContainerImage.fromEcrRepository(repo, imageTag);
     const bucket = s3.Bucket.fromBucketName(this, 'AppBucket', bucketName);
+    const privateBucket = s3.Bucket.fromBucketName(this, 'PrivateAppBucket', privateBucketName);
 
     // ... service creation ...
 
@@ -86,6 +88,8 @@ export class InfraStack extends cdk.Stack {
     const svc = result.service;
 
     bucket.grantReadWrite(svc.taskDefinition.taskRole);
+    privateBucket.grantReadWrite(svc.taskDefinition.taskRole);
+
     const backendServiceSg = svc.service.connections.securityGroups[0];
 
     const cloudMapNs = sd.PrivateDnsNamespace.fromPrivateDnsNamespaceAttributes(this, name('ImportedNs'), {
@@ -109,6 +113,7 @@ export class InfraStack extends cdk.Stack {
     svc.taskDefinition.defaultContainer?.addEnvironment('REDIS_HOST', redis.host);
     svc.taskDefinition.defaultContainer?.addEnvironment('REDIS_PORT', String(redis.port));
     svc.taskDefinition.defaultContainer?.addEnvironment('AWS_S3_BUCKET_NAME', String(bucketName));
+    svc.taskDefinition.defaultContainer?.addEnvironment('AWS_PRIVATE_S3_BUCKET_NAME', String(privateBucketName));
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Outputs (conditional based on TLS enabled)
