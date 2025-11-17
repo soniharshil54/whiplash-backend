@@ -20,7 +20,7 @@ export const prodConfig = {
       },
     },
     service: {
-      desiredCount: 2,
+      desiredCount: 1,
       minCount: 1,
       maxCount: 2,
     },
